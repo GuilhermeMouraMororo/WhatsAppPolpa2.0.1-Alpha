@@ -25,14 +25,37 @@ app.use(session({
   cookie: { secure: false }
 }));
 
-// Store users and their credentials (in production, use a database)
-const users = {
-  [process.env.USER_NAME || 'admin']: process.env.USER_PASSWORD || 'password123'
-};
+// Users database file
+const USERS_FILE = 'users.json';
+
+// Initialize users file if it doesn't exist
+if (!fs.existsSync(USERS_FILE)) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify({}));
+}
+
+// Load users from file
+function loadUsers() {
+  try {
+    const data = fs.readFileSync(USERS_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Error loading users:', error);
+    return {};
+  }
+}
+
+// Save users to file
+function saveUsers(users) {
+  try {
+    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
+  } catch (error) {
+    console.error('Error saving users:', error);
+  }
+}
 
 // Store WhatsApp clients per user
 const clients = {};
-let currentQR = null;
+const userQRCodes = {};
 
 // Authentication middleware
 function isAuthenticated(req, res, next) {
@@ -43,9 +66,38 @@ function isAuthenticated(req, res, next) {
   }
 }
 
+// Register endpoint
+app.post('/api/register', (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.json({ success: false, message: 'Username and password required' });
+  }
+  
+  if (username.length < 3) {
+    return res.json({ success: false, message: 'Username must be at least 3 characters' });
+  }
+  
+  if (password.length < 6) {
+    return res.json({ success: false, message: 'Password must be at least 6 characters' });
+  }
+  
+  const users = loadUsers();
+  
+  if (users[username]) {
+    return res.json({ success: false, message: 'Username already exists' });
+  }
+  
+  users[username] = password;
+  saveUsers(users);
+  
+  res.json({ success: true, message: 'Account created successfully' });
+});
+
 // Login endpoint
 app.post('/api/login', (req, res) => {
   const { username, password } = req.body;
+  const users = loadUsers();
   
   if (users[username] && users[username] === password) {
     req.session.user = username;
@@ -92,18 +144,13 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
 
     client.on('qr', (qr) => {
       console.log('QR Code received for user:', user);
-      currentQR = qr;
-      qrcode.toDataURL(qr, (err, url) => {
-        if (err) {
-          console.error('Error generating QR code:', err);
-        }
-      });
+      userQRCodes[user] = qr;
     });
 
     client.on('ready', () => {
       console.log('WhatsApp client ready for user:', user);
       clients[user] = client;
-      currentQR = null;
+      delete userQRCodes[user];
     });
 
     client.on('authenticated', () => {
@@ -111,8 +158,8 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
     });
 
     client.on('auth_failure', (msg) => {
-      console.error('Authentication failure:', msg);
-      currentQR = null;
+      console.error('Authentication failure for user:', user, msg);
+      delete userQRCodes[user];
     });
 
     client.initialize();
@@ -127,9 +174,12 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
 
 // Get QR code
 app.get('/api/qr', isAuthenticated, async (req, res) => {
-  if (currentQR) {
+  const user = req.session.user;
+  const qr = userQRCodes[user];
+  
+  if (qr) {
     try {
-      const qrImage = await qrcode.toDataURL(currentQR);
+      const qrImage = await qrcode.toDataURL(qr);
       res.json({ qr: qrImage });
     } catch (error) {
       res.status(500).json({ error: 'Failed to generate QR code' });
@@ -152,7 +202,7 @@ app.get('/api/whatsapp-status', isAuthenticated, (req, res) => {
     return res.json({ ready: true, needsQR: false, info: client.info });
   }
   
-  res.json({ ready: false, needsQR: !!currentQR });
+  res.json({ ready: false, needsQR: !!userQRCodes[user] });
 });
 
 // Send messages
@@ -177,7 +227,7 @@ app.post('/api/send-messages', isAuthenticated, upload.single('numbers'), async 
       .split('\n')
       .map(num => num.trim())
       .filter(num => num.length > 0);
-        
+    
     const results = [];
     
     for (const number of phoneNumbers) {
@@ -214,11 +264,12 @@ app.post('/api/send-messages', isAuthenticated, upload.single('numbers'), async 
 app.post('/api/logout', (req, res) => {
   const user = req.session.user;
   
-  // Optionally destroy WhatsApp client
-  if (clients[user]) {
-    clients[user].destroy();
-    delete clients[user];
-  }
+  // Don't destroy WhatsApp client on logout (keep session active)
+  // If you want to destroy it, uncomment:
+  // if (clients[user]) {
+  //   clients[user].destroy();
+  //   delete clients[user];
+  // }
   
   req.session.destroy();
   res.json({ success: true });
