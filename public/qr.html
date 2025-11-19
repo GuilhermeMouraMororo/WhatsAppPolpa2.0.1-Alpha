@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp QR Code</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>WhatsApp Connection</h1>
+            <div id="status">Checking status...</div>
+            <div id="qrContainer" style="display: none;">
+                <h2>Scan QR Code</h2>
+                <p>Open WhatsApp on your phone and scan this code:</p>
+                <img id="qrCode" alt="QR Code" style="max-width: 300px;">
+            </div>
+            <div id="loading" style="display: none;">
+                <p>Connecting to WhatsApp...</p>
+            </div>
+            <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+        </div>
+    </div>
+
+    <script>
+        let checkInterval;
+
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/auth-status');
+                const data = await response.json();
+                
+                if (!data.authenticated) {
+                    window.location.href = '/login.html';
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+            }
+        }
+
+        async function initWhatsApp() {
+            try {
+                const response = await fetch('/api/init-whatsapp', { method: 'POST' });
+                const data = await response.json();
+                
+                if (data.status === 'ready') {
+                    window.location.href = '/sender.html';
+                } else {
+                    document.getElementById('loading').style.display = 'block';
+                    startQRCheck();
+                }
+            } catch (error) {
+                document.getElementById('status').textContent = 'Failed to initialize WhatsApp';
+            }
+        }
+
+        async function checkQR() {
+            try {
+                const statusResponse = await fetch('/api/whatsapp-status');
+                const statusData = await statusResponse.json();
+                
+                if (statusData.ready) {
+                    clearInterval(checkInterval);
+                    window.location.href = '/sender.html';
+                    return;
+                }
+                
+                const qrResponse = await fetch('/api/qr');
+                const qrData = await qrResponse.json();
+                
+                if (qrData.qr) {
+                    document.getElementById('qrContainer').style.display = 'block';
+                    document.getElementById('qrCode').src = qrData.qr;
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('status').textContent = 'Scan the QR code with your phone';
+                } else if (!statusData.needsQR) {
+                    document.getElementById('status').textContent = 'Connecting...';
+                }
+            } catch (error) {
+                console.error('Error checking QR:', error);
+            }
+        }
+
+        function startQRCheck() {
+            checkQR();
+            checkInterval = setInterval(checkQR, 2000);
+        }
+
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login.html';
+        });
+
+        // Initialize
+        checkAuth();
+        initWhatsApp();
+    </script>
+</body>
+</html>

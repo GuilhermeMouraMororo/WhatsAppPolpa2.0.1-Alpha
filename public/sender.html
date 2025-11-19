@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Send Messages - WhatsApp Bulk Sender</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>Send Bulk Messages</h1>
+            <div id="connectionStatus" class="success"></div>
+            
+            <form id="sendForm">
+                <div class="form-group">
+                    <label for="message">Message:</label>
+                    <textarea id="message" name="message" rows="5" required 
+                        placeholder="Enter the message you want to send..."></textarea>
+                </div>
+                
+                <div class="form-group">
+                    <label for="numbers">Phone Numbers File (.txt):</label>
+                    <input type="file" id="numbers" name="numbers" accept=".txt" required>
+                    <small>Upload a .txt file with one phone number per line (with country code, e.g., +1234567890)</small>
+                </div>
+                
+                <button type="submit" class="btn" id="sendBtn">Send Messages</button>
+                <button type="button" class="btn btn-secondary" id="logoutBtn">Logout</button>
+            </form>
+            
+            <div id="results" style="display: none;">
+                <h2>Results</h2>
+                <div id="resultsList"></div>
+            </div>
+            
+            <div id="progress" style="display: none;">
+                <p>Sending messages... Please wait.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function checkAuth() {
+            try {
+                const response = await fetch('/api/auth-status');
+                const data = await response.json();
+                
+                if (!data.authenticated) {
+                    window.location.href = '/login.html';
+                    return;
+                }
+            } catch (error) {
+                console.error('Auth check failed:', error);
+            }
+        }
+
+        async function checkWhatsAppStatus() {
+            try {
+                const response = await fetch('/api/whatsapp-status');
+                const data = await response.json();
+                
+                if (!data.ready) {
+                    window.location.href = '/qr.html';
+                } else {
+                    document.getElementById('connectionStatus').textContent = 
+                        `Connected as: ${data.info.pushname || 'WhatsApp User'}`;
+                }
+            } catch (error) {
+                console.error('Status check failed:', error);
+            }
+        }
+
+        document.getElementById('sendForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const message = document.getElementById('message').value;
+            const numbersFile = document.getElementById('numbers').files[0];
+            const progressDiv = document.getElementById('progress');
+            const resultsDiv = document.getElementById('results');
+            const sendBtn = document.getElementById('sendBtn');
+            
+            if (!numbersFile) {
+                alert('Please select a file with phone numbers');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('message', message);
+            formData.append('numbers', numbersFile);
+            
+            sendBtn.disabled = true;
+            progressDiv.style.display = 'block';
+            resultsDiv.style.display = 'none';
+            
+            try {
+                const response = await fetch('/api/send-messages', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    const resultsList = document.getElementById('resultsList');
+                    resultsList.innerHTML = '';
+                    
+                    data.results.forEach(result => {
+                        const item = document.createElement('div');
+                        item.className = result.status === 'sent' ? 'success' : 'error';
+                        item.textContent = `${result.number}: ${result.status}`;
+                        resultsList.appendChild(item);
+                    });
+                    
+                    resultsDiv.style.display = 'block';
+                } else {
+                    alert('Failed to send messages: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error sending messages: ' + error.message);
+            } finally {
+                sendBtn.disabled = false;
+                progressDiv.style.display = 'none';
+            }
+        });
+
+        document.getElementById('logoutBtn').addEventListener('click', async () => {
+            if (confirm('Are you sure you want to logout?')) {
+                await fetch('/api/logout', { method: 'POST' });
+                window.location.href = '/login.html';
+            }
+        });
+
+        // Initialize
+        checkAuth();
+        checkWhatsAppStatus();
+    </script>
+</body>
+</html>

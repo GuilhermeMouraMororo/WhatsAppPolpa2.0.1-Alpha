@@ -1,0 +1,208 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 20px;
+}
+
+.container {
+    width: 100%;
+    max-width: 600px;
+}
+
+.card {
+    background: white;
+    border-radius: 15px;
+    padding: 40px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+h1 {
+    color: #333;
+    margin-bottom: 10px;
+    font-size: 28px;
+    text-align: center;
+}
+
+h2 {
+    color: #555;
+    margin-bottom: 20px;
+    font-size: 20px;
+    text-align: center;
+}
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    color: #555;
+    font-weight: 600;
+}
+
+input[type="text"],
+input[type="password"],
+input[type="file"],
+textarea {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 16px;
+    transition: border-color 0.3s;
+}
+
+input[type="text"]:focus,
+input[type="password"]:focus,
+textarea:focus {
+    outline: none;
+    border-color: #667eea;
+}
+
+textarea {
+    resize: vertical;
+    font-family: inherit;
+}
+
+small {
+    display: block;
+    margin-top: 5px;
+    color: #777;
+    font-size: 13px;
+}
+
+.btn {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-bottom: 10px;
+}
+
+.btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px rgba(102, 126, 234, 0.4);
+}
+
+.btn:active {
+    transform: translateY(0);
+}
+
+.btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.btn-secondary {
+    background: #6c757d;
+}
+
+.btn-secondary:hover {
+    box-shadow: 0 10px 25px rgba(108, 117, 125, 0.4);
+}
+
+.error {
+    color: #dc3545;
+    margin-top: 10px;
+    font-size: 14px;
+    text-align: center;
+}
+
+.success {
+    color: #28a745;
+    margin-bottom: 20px;
+    font-size: 14px;
+    text-align: center;
+    font-weight: 600;
+}
+
+#qrContainer {
+    text-align: center;
+    margin: 20px 0;
+}
+
+#qrContainer p {
+    margin-bottom: 15px;
+    color: #555;
+}
+
+#qrCode {
+    border: 3px solid #667eea;
+    border-radius: 10px;
+    padding: 10px;
+    background: white;
+}
+
+#status {
+    text-align: center;
+    padding: 15px;
+    margin-bottom: 20px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    color: #555;
+    font-weight: 500;
+}
+
+#loading {
+    text-align: center;
+    padding: 20px;
+    color: #667eea;
+    font-weight: 600;
+}
+
+#results {
+    margin-top: 30px;
+    padding-top: 20px;
+    border-top: 2px solid #e0e0e0;
+}
+
+#resultsList {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+#resultsList div {
+    padding: 10px;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    font-size: 14px;
+}
+
+#resultsList .success {
+    background: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+#resultsList .error {
+    background: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
+
+#progress {
+    text-align: center;
+    padding: 20px;
+    background: #fff3cd;
+    border-radius: 8px;
+    color: #856404;
+    font-weight: 600;
+    margin-top: 20px;
+}
