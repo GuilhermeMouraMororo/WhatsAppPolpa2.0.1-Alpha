@@ -3,28 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - WhatsApp Bulk Sender</title>
+    <title>Login - WhatsAppPolpa 2.0.1 Beta</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <div class="card">
-            <h1>WhatsApp Bulk Sender</h1>
+            <h1>WhatsAppPolpa 2.0.1 Beta</h1>
             <h2>Login</h2>
             <form id="loginForm">
                 <div class="form-group">
-                    <label for="username">Username:</label>
+                    <label for="username">Nome de Usuário:</label>
                     <input type="text" id="username" name="username" required>
                 </div>
                 <div class="form-group">
-                    <label for="password">Password:</label>
+                    <label for="password">Senha:</label>
                     <input type="password" id="password" name="password" required>
                 </div>
                 <button type="submit" class="btn">Login</button>
                 <div id="error" class="error"></div>
             </form>
             <div style="text-align: center; margin-top: 20px;">
-                <p style="color: #666;">Don't have an account? <a href="/register.html" style="color: #667eea; text-decoration: none; font-weight: 600;">Register here</a></p>
+                <p style="color: #666;">Não tem uma conta? <a href="/register.html" style="color: #667eea; text-decoration: none; font-weight: 600;">Registre aqui</a></p>
             </div>
         </div>
     </div>
@@ -49,10 +49,10 @@
                 if (data.success) {
                     window.location.href = '/qr.html';
                 } else {
-                    errorDiv.textContent = data.message || 'Invalid credentials';
+                    errorDiv.textContent = data.message || 'Credenciais inválidas';
                 }
             } catch (error) {
-                errorDiv.textContent = 'Login failed. Please try again.';
+                errorDiv.textContent = 'Login falhou. Por favor, tente novamente';
             }
         });
     </script>
