@@ -107,7 +107,7 @@ app.post('/api/login', (req, res) => {
     req.session.user = username;
     res.json({ success: true });
   } else {
-    res.json({ success: false, message: 'Invalid credentials' });
+    res.json({ success: false, message: 'Credenciais inválidas' });
   }
 });
 
