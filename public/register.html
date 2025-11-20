@@ -3,34 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Register - WhatsApp Bulk Sender</title>
+    <title>Registrar - WhatsAppPolpa 2.0.1 Beta</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <div class="card">
-            <h1>WhatsApp Bulk Sender</h1>
-            <h2>Create Account</h2>
+            <h1>WhatsAppPolpa 2.0.1 Beta</h1>
+            <h2>Criar Conta</h2>
             <form id="registerForm">
                 <div class="form-group">
-                    <label for="username">Username:</label>
+                    <label for="username">Nome de usuário:</label>
                     <input type="text" id="username" name="username" required minlength="3">
-                    <small>At least 3 characters</small>
+                    <small>Pelo menos 3 caracteres</small>
                 </div>
                 <div class="form-group">
-                    <label for="password">Password:</label>
+                    <label for="password">Senha:</label>
                     <input type="password" id="password" name="password" required minlength="6">
-                    <small>At least 6 characters</small>
+                    <small>Pelo menos 6 caracteres</small>
                 </div>
                 <div class="form-group">
-                    <label for="confirmPassword">Confirm Password:</label>
+                    <label for="confirmPassword">Confirmar Senha:</label>
                     <input type="password" id="confirmPassword" name="confirmPassword" required>
                 </div>
-                <button type="submit" class="btn">Create Account</button>
+                <button type="submit" class="btn">Criar Conta</button>
                 <div id="message" class="error"></div>
             </form>
             <div style="text-align: center; margin-top: 20px;">
-                <p style="color: #666;">Already have an account? <a href="/login.html" style="color: #667eea; text-decoration: none; font-weight: 600;">Login here</a></p>
+                <p style="color: #666;">Já tem uma conta? <a href="/login.html" style="color: #667eea; text-decoration: none; font-weight: 600;">Login aqui</a></p>
             </div>
         </div>
     </div>
@@ -50,7 +50,7 @@
             
             // Validate passwords match
             if (password !== confirmPassword) {
-                messageDiv.textContent = 'Passwords do not match';
+                messageDiv.textContent = 'As senhas não são iguais';
                 return;
             }
             
@@ -65,15 +65,15 @@
                 
                 if (data.success) {
                     messageDiv.className = 'success';
-                    messageDiv.textContent = 'Account created successfully! Redirecting to login...';
+                    messageDiv.textContent = 'Conta criada com sucesso! Indo para o login';
                     setTimeout(() => {
                         window.location.href = '/login.html';
                     }, 2000);
                 } else {
-                    messageDiv.textContent = data.message || 'Registration failed';
+                    messageDiv.textContent = data.message || 'Registro falhou';
                 }
             } catch (error) {
-                messageDiv.textContent = 'Registration failed. Please try again.';
+                messageDiv.textContent = 'Registro falhou. Por favor tente novamente.';
             }
         });
     </script>
