@@ -3,39 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Send Messages - WhatsApp Bulk Sender</title>
+    <title>Enviar mensagens - WhatsAppPolpa 2.0.1 Beta</title>
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
     <div class="container">
         <div class="card">
-            <h1>Send Bulk Messages</h1>
+            <h1>WhatsAppPolpa 2.0.1 Beta</h1>
             <div id="connectionStatus" class="success"></div>
             
             <form id="sendForm">
                 <div class="form-group">
-                    <label for="message">Message:</label>
+                    <label for="message">Mensagem</label>
                     <textarea id="message" name="message" rows="5" required 
-                        placeholder="Enter the message you want to send..."></textarea>
+                        placeholder="Entre a mensagem que deseja enviar aos clientes..."></textarea>
                 </div>
                 
                 <div class="form-group">
-                    <label for="numbers">Phone Numbers File (.txt):</label>
+                    <label for="numbers">Arquivo dos números de telefone (.txt):</label>
                     <input type="file" id="numbers" name="numbers" accept=".txt" required>
-                    <small>Upload a .txt file with one phone number per line (with country code, e.g., +1234567890)</small>
+                    <small>Dá upload de um arquivo .txt dos números de telefone (siga o modelo: +558512345678)</small>
                 </div>
                 
-                <button type="submit" class="btn" id="sendBtn">Send Messages</button>
-                <button type="button" class="btn btn-secondary" id="logoutBtn">Logout</button>
+                <div class="form-group-answered">
+                    <label for="numbers-answered">Arquivo dos números de telefone respondidos (.txt):</label>
+                    <input type="file" id="numbers-answered" name="numbers-answered" accept=".txt">
+                    <small>Dá upload de um arquivo .txt dos números de telefone dos que já responderam (siga o modelo: +558512345678)</small>
+                </div>
+
+                <button type="submit" class="btn" id="sendBtn">Enviar mensagens</button>
+                <button type="button" class="btn btn-secondary" id="logoutBtn">Deslogar</button>
             </form>
             
             <div id="results" style="display: none;">
-                <h2>Results</h2>
+                <h2>Resultados</h2>
                 <div id="resultsList"></div>
             </div>
             
             <div id="progress" style="display: none;">
-                <p>Sending messages... Please wait.</p>
+                <p>Enviando mensagens... Por favor aguarde.</p>
             </div>
         </div>
     </div>
@@ -64,7 +70,7 @@
                     window.location.href = '/qr.html';
                 } else {
                     document.getElementById('connectionStatus').textContent = 
-                        `Connected as: ${data.info.pushname || 'WhatsApp User'}`;
+                        `Conectado como: ${data.info.pushname || 'WhatsApp User'}`;
                 }
             } catch (error) {
                 console.error('Status check failed:', error);
@@ -76,6 +82,7 @@
             
             const message = document.getElementById('message').value;
             const numbersFile = document.getElementById('numbers').files[0];
+            const numbersAnsweredFile = document.getElementById('numbers-answered').files[0];
             const progressDiv = document.getElementById('progress');
             const resultsDiv = document.getElementById('results');
             const sendBtn = document.getElementById('sendBtn');
@@ -84,10 +91,11 @@
                 alert('Please select a file with phone numbers');
                 return;
             }
-            
+
             const formData = new FormData();
             formData.append('message', message);
             formData.append('numbers', numbersFile);
+            formData.append('answeredNumbers', numbersAnsweredFile);
             
             sendBtn.disabled = true;
             progressDiv.style.display = 'block';
@@ -108,16 +116,16 @@
                     data.results.forEach(result => {
                         const item = document.createElement('div');
                         item.className = result.status === 'sent' ? 'success' : 'error';
-                        item.textContent = `${result.number}: ${result.status}`;
+                        item.textContent = `${result.number}: enviado com sucesso`;
                         resultsList.appendChild(item);
                     });
                     
                     resultsDiv.style.display = 'block';
                 } else {
-                    alert('Failed to send messages: ' + (data.error || 'Unknown error'));
+                    alert('Falha ao enviar mensagens: ' + (data.error || 'Erro desconhecido'));
                 }
             } catch (error) {
-                alert('Error sending messages: ' + error.message);
+                alert('Error enviar messages: ' + error.message);
             } finally {
                 sendBtn.disabled = false;
                 progressDiv.style.display = 'none';
@@ -125,7 +133,7 @@
         });
 
         document.getElementById('logoutBtn').addEventListener('click', async () => {
-            if (confirm('Are you sure you want to logout?')) {
+            if (confirm('Tem certeza de que quer deslogar?')) {
                 await fetch('/api/logout', { method: 'POST' });
                 window.location.href = '/login.html';
             }
