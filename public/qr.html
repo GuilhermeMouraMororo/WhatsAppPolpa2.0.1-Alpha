@@ -9,17 +9,17 @@
 <body>
     <div class="container">
         <div class="card">
-            <h1>WhatsApp Connection</h1>
-            <div id="status">Checking status...</div>
+            <h1>Conexão do WhatsApp</h1>
+            <div id="status">Checando status...</div>
             <div id="qrContainer" style="display: none;">
-                <h2>Scan QR Code</h2>
-                <p>Open WhatsApp on your phone and scan this code:</p>
+                <h2>Scaneia o QR Code</h2>
+                <p>Abra o WhatsApp no teu celular e sacaneia esse QR code:</p>
                 <img id="qrCode" alt="QR Code" style="max-width: 300px;">
             </div>
             <div id="loading" style="display: none;">
-                <p>Connecting to WhatsApp...</p>
+                <p>Conectando ao WhatsApp...</p>
             </div>
-            <button id="logoutBtn" class="btn btn-secondary">Logout</button>
+            <button id="logoutBtn" class="btn btn-secondary">Deslogar</button>
         </div>
     </div>
 
@@ -73,9 +73,9 @@
                     document.getElementById('qrContainer').style.display = 'block';
                     document.getElementById('qrCode').src = qrData.qr;
                     document.getElementById('loading').style.display = 'none';
-                    document.getElementById('status').textContent = 'Scan the QR code with your phone';
+                    document.getElementById('status').textContent = 'Scaneia o QR code com o teu celular';
                 } else if (!statusData.needsQR) {
-                    document.getElementById('status').textContent = 'Connecting...';
+                    document.getElementById('status').textContent = 'Conectando...';
                 }
             } catch (error) {
                 console.error('Error checking QR:', error);
