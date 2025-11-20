@@ -53,6 +53,10 @@ function saveUsers(users) {
   }
 }
 
+function getRandomInt(max) {
+  return Math.floor(Math.random() * max);
+}
+
 // Store WhatsApp clients per user
 const clients = {};
 const userQRCodes = {};
@@ -71,27 +75,27 @@ app.post('/api/register', (req, res) => {
   const { username, password } = req.body;
   
   if (!username || !password) {
-    return res.json({ success: false, message: 'Username and password required' });
+    return res.json({ success: false, message: 'Nome de usuário e senha requeridos' });
   }
   
   if (username.length < 3) {
-    return res.json({ success: false, message: 'Username must be at least 3 characters' });
+    return res.json({ success: false, message: 'O nome de usuário precisa ter ao menos 3 caracteres' });
   }
   
   if (password.length < 6) {
-    return res.json({ success: false, message: 'Password must be at least 6 characters' });
+    return res.json({ success: false, message: 'A senha precisa ter ao menos 6 caracteres' });
   }
   
   const users = loadUsers();
   
   if (users[username]) {
-    return res.json({ success: false, message: 'Username already exists' });
+    return res.json({ success: false, message: 'O nome de usuário já existe' });
   }
   
   users[username] = password;
   saveUsers(users);
   
-  res.json({ success: true, message: 'Account created successfully' });
+  res.json({ success: true, message: 'Conta criada com sucesso!' });
 });
 
 // Login endpoint
@@ -143,22 +147,22 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
     });
 
     client.on('qr', (qr) => {
-      console.log('QR Code received for user:', user);
+      console.log('QR Code recebido pelo usuário:', user);
       userQRCodes[user] = qr;
     });
 
     client.on('ready', () => {
-      console.log('WhatsApp client ready for user:', user);
+      console.log('WhatsApp client pronto para o usuário:', user);
       clients[user] = client;
       delete userQRCodes[user];
     });
 
     client.on('authenticated', () => {
-      console.log('WhatsApp authenticated for user:', user);
+      console.log('WhatsApp autenticado para o usuário:', user);
     });
 
     client.on('auth_failure', (msg) => {
-      console.error('Authentication failure for user:', user, msg);
+      console.error('Autenticação falhada para o usuário:', user, msg);
       delete userQRCodes[user];
     });
 
@@ -168,7 +172,7 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
     res.json({ status: 'initializing', needsQR: true });
   } catch (error) {
     console.error('Error initializing WhatsApp:', error);
-    res.status(500).json({ error: 'Failed to initialize WhatsApp' });
+    res.status(500).json({ error: 'Falha ao iniciar WhatsApp' });
   }
 });
 
@@ -206,7 +210,10 @@ app.get('/api/whatsapp-status', isAuthenticated, (req, res) => {
 });
 
 // Send messages
-app.post('/api/send-messages', isAuthenticated, upload.single('numbers'), async (req, res) => {
+app.post('/api/send-messages', isAuthenticated, upload.fields([ 
+    {name: 'numbers', maxCount: 1},
+    {name: 'answeredNumbers', maxCount : 1}
+]), async (req, res) => {
   const user = req.session.user;
   const client = clients[user];
   
@@ -215,26 +222,57 @@ app.post('/api/send-messages', isAuthenticated, upload.single('numbers'), async 
   }
   
   const { message } = req.body;
-  const file = req.file;
+  const numbersFile = req.files['numbers'][0];
+  const answeredFile = req.files['answeredNumbers'] ? req.files['answeredNumbers'][0] : null;
   
-  if (!file || !message) {
+  if (!numbersFile || !message) {
     return res.status(400).json({ error: 'Missing message or phone numbers file' });
   }
   
   try {
-    const fileContent = fs.readFileSync(file.path, 'utf-8');
-    const phoneNumbers = fileContent
+    const numbersfileContent = fs.readFileSync(numbersFile.path, 'utf-8');
+    const phoneNumbers = numbersfileContent
       .split('\n')
       .map(num => num.trim())
       .filter(num => num.length > 0);
-    
+
+    let numbersToSend = phoneNumbers;
+
+    // DEBUG: Log original numbers
+    console.log('Original numbers:', phoneNumbers);
+
+    if (answeredFile) {
+      const respondidosContent = fs.readFileSync(answeredFile.path, 'utf-8');
+      const respondedNumbers = respondidosContent
+        .split('\n')
+        .map(num => num.trim())
+        .filter(num => num.length > 0)
+        .map(num => num.replace(/\D/g, '')); // CLEAN THE ANSWERED NUMBERS TOO!
+
+      // DEBUG: Log answered numbers
+      console.log('Answered numbers (cleaned):', respondedNumbers);
+
+      numbersToSend = phoneNumbers.filter(num => {
+        const cleanedNum = num.replace(/\D/g, '');
+        const shouldSend = !respondedNumbers.includes(cleanedNum);
+        
+        // DEBUG: Show which numbers are being filtered
+        if (!shouldSend) {
+          console.log(`Filtering out: ${num} (cleaned: ${cleanedNum})`);
+        }
+        
+        return shouldSend;
+      });
+
+      // DEBUG: Log results
+      console.log(`After filter - Original: ${phoneNumbers.length}, To send: ${numbersToSend.length}`);
+    }
+
     const results = [];
-    
-    for (const number of phoneNumbers) {
+
+    for (const number of numbersToSend) {
       try {
-        // Format number (remove spaces, dashes, etc.)
-        const formattedNumber = number.replace(/[^\d]/g, '');
-        // Add country code format if not present
+        const formattedNumber = number.replace(/\D/g, '');
         const chatId = formattedNumber.includes('@') 
           ? formattedNumber 
           : `${formattedNumber}@c.us`;
@@ -242,18 +280,28 @@ app.post('/api/send-messages', isAuthenticated, upload.single('numbers'), async 
         await client.sendMessage(chatId, message);
         results.push({ number, status: 'sent' });
         
-        // Small delay to avoid rate limiting
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        await new Promise(resolve => setTimeout(resolve, (20 + getRandomInt(8)) * 1000));
       } catch (error) {
         console.error(`Error sending to ${number}:`, error);
         results.push({ number, status: 'failed', error: error.message });
       }
     }
     
-    // Clean up uploaded file
-    fs.unlinkSync(file.path);
+    // Clean up uploaded files
+    fs.unlinkSync(numbersFile.path);
+    if (answeredFile) {
+      fs.unlinkSync(answeredFile.path);
+    }
     
-    res.json({ success: true, results });
+    res.json({ 
+      success: true, 
+      results,
+      debug: {
+        originalCount: phoneNumbers.length,
+        filteredCount: numbersToSend.length,
+        removedCount: phoneNumbers.length - numbersToSend.length
+      }
+    });
   } catch (error) {
     console.error('Error processing messages:', error);
     res.status(500).json({ error: 'Failed to process messages' });
@@ -284,6 +332,10 @@ app.get('/', (req, res) => {
   }
 });
 
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
