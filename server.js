@@ -11,8 +11,12 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 
+if (!fs.existsSync('/mnt/data/uploads')) {
+  fs.mkdirSync('/mnt/data/uploads', { recursive: true });
+}
+
 const app = express();
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: '/mnt/data/uploads' });
 
 // Middleware
 app.use(express.json());
@@ -132,6 +136,7 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
     const client = new Client({
       authStrategy: new LocalAuth({ clientId: user, dataPath: '/mnt/data' }),
       puppeteer: {
+        executablePath: '/usr/bin/chromium',
         headless: true,
         args: [
           '--no-sandbox',
