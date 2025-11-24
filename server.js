@@ -26,7 +26,7 @@ app.use(session({
 }));
 
 // Users database file
-const USERS_FILE = 'users.json';
+const USERS_FILE = path.join('/mnt/data', 'users.json');
 
 // Initialize users file if it doesn't exist
 if (!fs.existsSync(USERS_FILE)) {
