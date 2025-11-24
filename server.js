@@ -130,7 +130,7 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
   
   try {
     const client = new Client({
-      authStrategy: new LocalAuth({ clientId: user }),
+      authStrategy: new LocalAuth({ clientId: user, dataPath: '/mnt/data' }),
       puppeteer: {
         headless: true,
         args: [
