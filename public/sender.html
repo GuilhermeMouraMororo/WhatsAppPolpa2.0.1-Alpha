@@ -25,28 +25,54 @@
                     <small>Dá upload de um arquivo .txt dos números de telefone (siga o modelo: +558512345678)</small>
                 </div>
                 
-                <div class="form-group-answered">
+                <div class="form-group">
                     <label for="numbers-answered">Arquivo dos números de telefone respondidos (.txt):</label>
                     <input type="file" id="numbers-answered" name="numbers-answered" accept=".txt">
                     <small>Dá upload de um arquivo .txt dos números de telefone dos que já responderam (siga o modelo: +558512345678)</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="batchSize">Tamanho do lote:</label>
+                    <select id="batchSize" name="batchSize">
+                        <option value="5">5 números por lote</option>
+                        <option value="10" selected>10 números por lote</option>
+                        <option value="15">15 números por lote</option>
+                    </select>
+                    <small>Lotes menores são mais estáveis</small>
+                </div>
+
+                <div class="form-group">
+                    <label for="delayMultiplier">Velocidade de envio:</label>
+                    <select id="delayMultiplier" name="delayMultiplier">
+                        <option value="0.7">Rápido</option>
+                        <option value="1" selected>Normal</option>
+                        <option value="1.5">Lento (mais estável)</option>
+                    </select>
                 </div>
 
                 <button type="submit" class="btn" id="sendBtn">Enviar mensagens</button>
                 <button type="button" class="btn btn-secondary" id="logoutBtn">Deslogar</button>
             </form>
             
+            <div id="progress" style="display: none;">
+                <h3>Progresso do Envio</h3>
+                <div id="progressBarContainer" style="background: #f0f0f0; border-radius: 10px; margin: 10px 0;">
+                    <div id="progressBar" style="height: 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 10px; width: 0%; transition: width 0.3s;"></div>
+                </div>
+                <div id="progressText">Preparando envio...</div>
+                <div id="batchInfo"></div>
+            </div>
+            
             <div id="results" style="display: none;">
                 <h2>Resultados</h2>
                 <div id="resultsList"></div>
-            </div>
-            
-            <div id="progress" style="display: none;">
-                <p>Enviando mensagens... Por favor aguarde.</p>
             </div>
         </div>
     </div>
 
     <script>
+        let currentSessionId = null;
+
         async function checkAuth() {
             try {
                 const response = await fetch('/api/auth-status');
@@ -83,9 +109,15 @@
             const message = document.getElementById('message').value;
             const numbersFile = document.getElementById('numbers').files[0];
             const numbersAnsweredFile = document.getElementById('numbers-answered').files[0];
+            const batchSize = document.getElementById('batchSize').value;
+            const delayMultiplier = document.getElementById('delayMultiplier').value;
+            
             const progressDiv = document.getElementById('progress');
             const resultsDiv = document.getElementById('results');
             const sendBtn = document.getElementById('sendBtn');
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            const batchInfo = document.getElementById('batchInfo');
             
             if (!numbersFile) {
                 alert('Please select a file with phone numbers');
@@ -96,41 +128,121 @@
             formData.append('message', message);
             formData.append('numbers', numbersFile);
             formData.append('answeredNumbers', numbersAnsweredFile);
+            formData.append('batchSize', batchSize);
+            formData.append('delayMultiplier', delayMultiplier);
             
             sendBtn.disabled = true;
             progressDiv.style.display = 'block';
             resultsDiv.style.display = 'none';
+            progressBar.style.width = '0%';
+            progressText.textContent = 'Iniciando envio...';
             
             try {
-                const response = await fetch('/api/send-messages', {
+                const response = await fetch('/api/send-batch', {
                     method: 'POST',
                     body: formData
                 });
                 
-                const data = await response.json();
-                
-                if (data.success) {
-                    const resultsList = document.getElementById('resultsList');
-                    resultsList.innerHTML = '';
-                    
-                    data.results.forEach(result => {
-                        const item = document.createElement('div');
-                        item.className = result.status === 'sent' ? 'success' : 'error';
-                        item.textContent = `${result.number}: enviado com sucesso`;
-                        resultsList.appendChild(item);
-                    });
-                    
-                    resultsDiv.style.display = 'block';
-                } else {
-                    alert('Falha ao enviar mensagens: ' + (data.error || 'Erro desconhecido'));
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
                 }
+                
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+                
+                while (true) {
+                    const { value, done } = await reader.read();
+                    
+                    if (done) break;
+                    
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n');
+                    buffer = lines.pop() || ''; // Keep incomplete line in buffer
+                    
+                    for (const line of lines) {
+                        if (line.trim()) {
+                            try {
+                                const data = JSON.parse(line);
+                                handleStreamData(data, progressBar, progressText, batchInfo, resultsDiv);
+                            } catch (e) {
+                                console.error('Error parsing stream data:', e);
+                            }
+                        }
+                    }
+                }
+                
             } catch (error) {
-                alert('Error enviar messages: ' + error.message);
-            } finally {
+                console.error('Error sending messages:', error);
+                alert('Erro ao enviar mensagens: ' + error.message);
                 sendBtn.disabled = false;
                 progressDiv.style.display = 'none';
             }
         });
+
+        function handleStreamData(data, progressBar, progressText, batchInfo, resultsDiv) {
+            switch (data.type) {
+                case 'progress':
+                    currentSessionId = data.sessionId;
+                    const percentage = (data.processed / data.total) * 100;
+                    progressBar.style.width = percentage + '%';
+                    progressText.textContent = 
+                        `Enviado: ${data.processed}/${data.total} | ` +
+                        `Sucesso: ${data.successful} | Falhas: ${data.failed}`;
+                    batchInfo.textContent = `Status: ${data.status} | Lote atual: ${data.currentBatch || 0}`;
+                    break;
+                    
+                case 'complete':
+                    showResults(data.results, data.summary, resultsDiv);
+                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('progress').style.display = 'none';
+                    break;
+                    
+                case 'error':
+                    alert('Erro durante o envio: ' + data.details);
+                    document.getElementById('sendBtn').disabled = false;
+                    document.getElementById('progress').style.display = 'none';
+                    break;
+            }
+        }
+
+        function showResults(results, summary, resultsDiv) {
+            const resultsList = document.getElementById('resultsList');
+            resultsList.innerHTML = '';
+            
+            // Add summary
+            const summaryDiv = document.createElement('div');
+            summaryDiv.className = 'success';
+            summaryDiv.innerHTML = `
+                <h3>Resumo do Envio</h3>
+                <p>Total: ${summary.total} | Enviados: ${summary.sent} | Falhas: ${summary.failed}</p>
+                <p>Taxa de sucesso: ${summary.successRate}</p>
+            `;
+            resultsList.appendChild(summaryDiv);
+            
+            // Add individual results (limit to 50 to avoid DOM overload)
+            const maxDisplay = 50;
+            const displayResults = results.slice(0, maxDisplay);
+            
+            displayResults.forEach(result => {
+                const item = document.createElement('div');
+                item.className = result.status === 'sent' ? 'success' : 'error';
+                item.textContent = `${result.number}: ${result.status === 'sent' ? 'enviado com sucesso' : 'falhou'}`;
+                if (result.error) {
+                    item.title = result.error;
+                }
+                resultsList.appendChild(item);
+            });
+            
+            if (results.length > maxDisplay) {
+                const moreItem = document.createElement('div');
+                moreItem.textContent = `... e mais ${results.length - maxDisplay} resultados`;
+                moreItem.style.color = '#666';
+                resultsList.appendChild(moreItem);
+            }
+            
+            resultsDiv.style.display = 'block';
+        }
 
         document.getElementById('logoutBtn').addEventListener('click', async () => {
             if (confirm('Tem certeza de que quer deslogar?')) {
