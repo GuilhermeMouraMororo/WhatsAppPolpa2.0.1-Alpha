@@ -164,8 +164,10 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-gpu'
+          '--disable-dev-shm-usage', // Uses /tmp instead of /dev/shm
+          '--disable-gpu',
+          '--single-process', // May be necessary in some constrained environments
+          '--no-zygote'
         ]
       }
     });
