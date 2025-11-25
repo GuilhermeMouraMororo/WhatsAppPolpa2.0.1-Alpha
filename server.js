@@ -159,7 +159,7 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
         dataPath: path.join(SESSIONS_PATH, user)
       }),
       puppeteer: {
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser',
         headless: true,
         args: [
           '--no-sandbox',
