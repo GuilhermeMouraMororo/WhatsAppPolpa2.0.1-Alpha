@@ -13,8 +13,15 @@ const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 
-const redisClient = new Redis(process.env.REDIS_URL);
+const redisUrl = new URL(process.env.REDIS_URL);
 
+const redisClient = new Redis({
+  host: redisUrl.hostname,
+  port: redisUrl.port,
+  password: redisUrl.password,
+  username: redisUrl.username || undefined, // Railway usually doesn't need this
+  tls: redisUrl.protocol === "rediss:" ? {} : undefined
+});
 
 if (!fs.existsSync('/mnt/data/uploads')) {
   fs.mkdirSync('/mnt/data/uploads', { recursive: true });
