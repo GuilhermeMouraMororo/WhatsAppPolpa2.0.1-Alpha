@@ -15,8 +15,8 @@ const app = express();
 const upload = multer({ dest: 'uploads/' });
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(express.static('public'));
 app.use(session({
   secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
@@ -24,6 +24,13 @@ app.use(session({
   saveUninitialized: false,
   cookie: { secure: false }
 }));
+
+// Increase timeout for long-running requests
+app.use((req, res, next) => {
+  req.setTimeout(300000); // 5 minutes
+  res.setTimeout(300000);
+  next();
+});
 
 // Users database file
 const USERS_FILE = 'users.json';
@@ -60,6 +67,7 @@ function getRandomInt(max) {
 // Store WhatsApp clients per user
 const clients = {};
 const userQRCodes = {};
+const activeSessions = {}; // Track active sending sessions
 
 // Authentication middleware
 function isAuthenticated(req, res, next) {
@@ -111,6 +119,18 @@ async function safeSendMessage(client, chatId, message, maxRetries = 2) {
     
     return await client.sendMessage(chatId, message);
   }, maxRetries, 2000);
+}
+
+// Keep-alive mechanism to prevent timeouts
+function setupKeepAlive(res) {
+  // Send periodic keep-alive headers
+  const keepAliveInterval = setInterval(() => {
+    if (!res.headersSent) {
+      res.write(' '); // Send empty space to keep connection alive
+    }
+  }, 30000); // Every 30 seconds
+
+  return () => clearInterval(keepAliveInterval);
 }
 
 // Register endpoint
@@ -260,41 +280,52 @@ app.get('/api/whatsapp-status', isAuthenticated, (req, res) => {
   res.json({ ready: false, needsQR: !!userQRCodes[user] });
 });
 
-// Send messages with improved error handling and recovery
-app.post('/api/send-messages', isAuthenticated, upload.fields([ 
-    {name: 'numbers', maxCount: 1},
-    {name: 'answeredNumbers', maxCount : 1}
+// NEW: Batch sending endpoint to prevent timeouts
+app.post('/api/send-batch', isAuthenticated, upload.fields([ 
+  {name: 'numbers', maxCount: 1},
+  {name: 'answeredNumbers', maxCount : 1}
 ]), async (req, res) => {
   const user = req.session.user;
-  let client = clients[user];
+  const sessionId = `${user}-${Date.now()}`;
   
-  if (!client || !isClientHealthy(client)) {
-    return res.status(400).json({ error: 'WhatsApp not connected or client unhealthy' });
-  }
+  // Set headers for long-running request
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Transfer-Encoding', 'chunked');
   
-  const { message } = req.body;
-  const numbersFile = req.files['numbers'][0];
-  const answeredFile = req.files['answeredNumbers'] ? req.files['answeredNumbers'][0] : null;
-  
-  if (!numbersFile || !message) {
-    return res.status(400).json({ error: 'Missing message or phone numbers file' });
-  }
-  
-  // File cleanup function
-  const cleanupFiles = () => {
-    try {
-      if (numbersFile && fs.existsSync(numbersFile.path)) {
-        fs.unlinkSync(numbersFile.path);
-      }
-      if (answeredFile && fs.existsSync(answeredFile.path)) {
-        fs.unlinkSync(answeredFile.path);
-      }
-    } catch (error) {
-      console.error('Error cleaning up files:', error);
-    }
-  };
+  const keepAliveCleanup = setupKeepAlive(res);
   
   try {
+    const client = clients[user];
+    
+    if (!client || !isClientHealthy(client)) {
+      keepAliveCleanup();
+      return res.status(400).json({ error: 'WhatsApp not connected or client unhealthy' });
+    }
+    
+    const { message, batchSize = 10, delayMultiplier = 1 } = req.body;
+    const numbersFile = req.files['numbers'][0];
+    const answeredFile = req.files['answeredNumbers'] ? req.files['answeredNumbers'][0] : null;
+    
+    if (!numbersFile || !message) {
+      keepAliveCleanup();
+      return res.status(400).json({ error: 'Missing message or phone numbers file' });
+    }
+    
+    // File cleanup function
+    const cleanupFiles = () => {
+      try {
+        if (numbersFile && fs.existsSync(numbersFile.path)) {
+          fs.unlinkSync(numbersFile.path);
+        }
+        if (answeredFile && fs.existsSync(answeredFile.path)) {
+          fs.unlinkSync(answeredFile.path);
+        }
+      } catch (error) {
+        console.error('Error cleaning up files:', error);
+      }
+    };
+    
+    // Read and process files
     const numbersfileContent = fs.readFileSync(numbersFile.path, 'utf-8');
     const phoneNumbers = numbersfileContent
       .split('\n')
@@ -303,7 +334,7 @@ app.post('/api/send-messages', isAuthenticated, upload.fields([
 
     let numbersToSend = phoneNumbers;
 
-    console.log('Original numbers count:', phoneNumbers.length);
+    console.log(`[${sessionId}] Original numbers count:`, phoneNumbers.length);
 
     if (answeredFile) {
       const respondidosContent = fs.readFileSync(answeredFile.path, 'utf-8');
@@ -313,127 +344,177 @@ app.post('/api/send-messages', isAuthenticated, upload.fields([
         .filter(num => num.length > 0)
         .map(num => num.replace(/\D/g, ''));
 
-      console.log('Answered numbers count:', respondedNumbers.length);
+      console.log(`[${sessionId}] Answered numbers count:`, respondedNumbers.length);
 
       numbersToSend = phoneNumbers.filter(num => {
         const cleanedNum = num.replace(/\D/g, '');
         return !respondedNumbers.includes(cleanedNum);
       });
 
-      console.log(`After filter - Original: ${phoneNumbers.length}, To send: ${numbersToSend.length}`);
+      console.log(`[${sessionId}] After filter - Original: ${phoneNumbers.length}, To send: ${numbersToSend.length}`);
     }
 
+    // Initialize session tracking
+    activeSessions[sessionId] = {
+      user,
+      total: numbersToSend.length,
+      processed: 0,
+      successful: 0,
+      failed: 0,
+      startTime: Date.now()
+    };
+
     const results = [];
-    let successfulSends = 0;
-    let failedSends = 0;
-    let sessionRecovered = false;
+    const actualBatchSize = Math.min(parseInt(batchSize), 15); // Max 15 per batch
+    
+    // Send initial progress
+    res.write(JSON.stringify({
+      type: 'progress',
+      sessionId,
+      total: numbersToSend.length,
+      processed: 0,
+      successful: 0,
+      failed: 0,
+      status: 'starting'
+    }) + '\n');
 
-    // Process in smaller batches to prevent memory issues
-    const batchSize = 10;
-    for (let i = 0; i < numbersToSend.length; i += batchSize) {
-      const batch = numbersToSend.slice(i, i + batchSize);
+    // Process in smaller batches with better error handling
+    for (let i = 0; i < numbersToSend.length; i += actualBatchSize) {
+      const batch = numbersToSend.slice(i, i + actualBatchSize);
       
-      for (const number of batch) {
-        try {
-          // Check client health before each message
-          if (!isClientHealthy(client)) {
-            console.log('Client unhealthy, attempting to recover...');
-            // Try to reinitialize client
-            try {
-              if (client) {
-                await client.destroy();
-              }
-            } catch (e) {
-              console.log('Error destroying old client:', e);
-            }
-            
-            delete clients[user];
-            return res.status(500).json({ 
-              error: 'WhatsApp session lost during sending', 
-              results,
-              sentSoFar: successfulSends,
-              failedSoFar: failedSends,
-              remaining: numbersToSend.length - (successfulSends + failedSends)
-            });
-          }
-
-          const formattedNumber = number.replace(/\D/g, '');
-          const chatId = formattedNumber.includes('@') 
-            ? formattedNumber 
-            : `${formattedNumber}@c.us`;
-          
-          await safeSendMessage(client, chatId, message);
-          results.push({ number, status: 'sent' });
-          successfulSends++;
-          
-          // Dynamic delay based on batch position (shorter delays at start, longer as we progress)
-          const baseDelay = 20 + getRandomInt(8);
-          const progressiveDelay = baseDelay * (1 + (successfulSends / numbersToSend.length));
-          await new Promise(resolve => setTimeout(resolve, progressiveDelay * 1000));
-          
-        } catch (error) {
-          console.error(`Error sending to ${number}:`, error.message);
-          results.push({ 
-            number, 
-            status: 'failed', 
-            error: error.message,
-            retried: error.message.includes('retry')
-          });
-          failedSends++;
-          
-          // If it's a session error, break out of the entire process
-          if (error.message.includes('Session closed') || 
-              error.message.includes('Protocol error') ||
-              error.message.includes('not healthy')) {
-            throw error;
-          }
-          
-          // Shorter delay after failures to recover quickly
-          await new Promise(resolve => setTimeout(resolve, 5000));
-        }
+      console.log(`[${sessionId}] Processing batch ${Math.floor(i/actualBatchSize) + 1}, size: ${batch.length}`);
+      
+      const batchResults = await processBatch(client, batch, message, delayMultiplier);
+      results.push(...batchResults);
+      
+      // Update session progress
+      const successfulInBatch = batchResults.filter(r => r.status === 'sent').length;
+      const failedInBatch = batchResults.filter(r => r.status === 'failed').length;
+      
+      activeSessions[sessionId].processed += batch.length;
+      activeSessions[sessionId].successful += successfulInBatch;
+      activeSessions[sessionId].failed += failedInBatch;
+      
+      // Send progress update
+      res.write(JSON.stringify({
+        type: 'progress',
+        sessionId,
+        total: numbersToSend.length,
+        processed: activeSessions[sessionId].processed,
+        successful: activeSessions[sessionId].successful,
+        failed: activeSessions[sessionId].failed,
+        currentBatch: batch.length,
+        status: 'processing'
+      }) + '\n');
+      
+      // Check client health between batches
+      if (!isClientHealthy(client)) {
+        throw new Error('WhatsApp client became unhealthy during sending');
       }
       
-      // Small delay between batches to prevent resource exhaustion
-      if (i + batchSize < numbersToSend.length) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
+      // Delay between batches
+      if (i + actualBatchSize < numbersToSend.length) {
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
     }
     
     cleanupFiles();
+    delete activeSessions[sessionId];
     
-    res.json({ 
-      success: true, 
+    // Send final result
+    res.write(JSON.stringify({
+      type: 'complete',
+      sessionId,
+      success: true,
       results,
       summary: {
         total: numbersToSend.length,
-        sent: successfulSends,
-        failed: failedSends,
-        successRate: ((successfulSends / numbersToSend.length) * 100).toFixed(2) + '%'
-      },
-      debug: {
-        originalCount: phoneNumbers.length,
-        filteredCount: numbersToSend.length,
-        removedCount: phoneNumbers.length - numbersToSend.length
+        sent: activeSessions[sessionId]?.successful || 0,
+        failed: activeSessions[sessionId]?.failed || 0,
+        successRate: ((activeSessions[sessionId]?.successful / numbersToSend.length) * 100).toFixed(2) + '%'
       }
-    });
+    }) + '\n');
+    
+    res.end();
+    
   } catch (error) {
-    console.error('Error processing messages:', error);
-    cleanupFiles();
-    res.status(500).json({ 
-      error: 'Failed to process messages', 
-      details: error.message,
-      partialResults: results || [],
-      sentSoFar: successfulSends || 0,
-      failedSoFar: failedSends || 0
-    });
+    console.error(`[${sessionId}] Error in send-batch:`, error);
+    keepAliveCleanup();
+    cleanupFiles?.();
+    delete activeSessions[sessionId];
+    
+    res.write(JSON.stringify({
+      type: 'error',
+      sessionId,
+      error: 'Failed to process messages',
+      details: error.message
+    }) + '\n');
+    res.end();
   }
 });
 
-// New endpoint to check sending progress
-app.get('/api/sending-progress', isAuthenticated, (req, res) => {
-  // You could implement this with a more sophisticated progress tracking system
-  res.json({ 
-    status: 'No active sending session tracked. Implement progress tracking if needed.' 
+// Process individual batch
+async function processBatch(client, batch, message, delayMultiplier = 1) {
+  const batchResults = [];
+  
+  for (const number of batch) {
+    try {
+      const formattedNumber = number.replace(/\D/g, '');
+      const chatId = formattedNumber.includes('@') 
+        ? formattedNumber 
+        : `${formattedNumber}@c.us`;
+      
+      await safeSendMessage(client, chatId, message);
+      batchResults.push({ number, status: 'sent' });
+      
+      // Reduced and configurable delay
+      const baseDelay = 8 + getRandomInt(4); // 8-12 seconds base
+      const actualDelay = baseDelay * delayMultiplier;
+      await new Promise(resolve => setTimeout(resolve, actualDelay * 1000));
+      
+    } catch (error) {
+      console.error(`Error sending to ${number}:`, error.message);
+      batchResults.push({ 
+        number, 
+        status: 'failed', 
+        error: error.message
+      });
+      
+      // Shorter delay after failures
+      await new Promise(resolve => setTimeout(resolve, 3000));
+    }
+  }
+  
+  return batchResults;
+}
+
+// Check session progress
+app.get('/api/session-progress/:sessionId', isAuthenticated, (req, res) => {
+  const sessionId = req.params.sessionId;
+  const progress = activeSessions[sessionId];
+  
+  if (!progress) {
+    return res.status(404).json({ error: 'Session not found' });
+  }
+  
+  res.json(progress);
+});
+
+// Health check endpoint with memory info
+app.get('/api/health', (req, res) => {
+  const memoryUsage = process.memoryUsage();
+  const memoryMB = {
+    rss: Math.round(memoryUsage.rss / 1024 / 1024),
+    heapTotal: Math.round(memoryUsage.heapTotal / 1024 / 1024),
+    heapUsed: Math.round(memoryUsage.heapUsed / 1024 / 1024),
+    external: Math.round(memoryUsage.external / 1024 / 1024)
+  };
+  
+  res.json({
+    status: 'ok',
+    memory: memoryMB,
+    uptime: process.uptime(),
+    activeSessions: Object.keys(activeSessions).length
   });
 });
 
@@ -452,19 +533,6 @@ app.post('/api/logout', (req, res) => {
   res.json({ success: true });
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  const user = req.session.user;
-  const client = user ? clients[user] : null;
-  
-  res.json({
-    status: 'ok',
-    whatsappConnected: client ? isClientHealthy(client) : false,
-    memoryUsage: process.memoryUsage(),
-    uptime: process.uptime()
-  });
-});
-
 // Redirect root to login
 app.get('/', (req, res) => {
   if (req.session.user) {
@@ -477,4 +545,5 @@ app.get('/', (req, res) => {
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  console.log('Memory optimization enabled');
 });
