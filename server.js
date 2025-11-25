@@ -1,61 +1,37 @@
-// --- top of file: load env as you already do ---
+// Load environment variables in development
 if (process.env.NODE_ENV !== 'production') {
   require('dotenv').config();
 }
 
 const express = require('express');
-const session = require("express-session");
-const Redis = require("ioredis");
-const connectRedis = require("connect-redis");
+const session = require('express-session');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 
-// --- configurable paths (use Railway Volume mount here) ---
-const SESSIONS_PATH = process.env.SESSIONS_PATH || '/data/sessions';
-const UPLOADS_PATH = process.env.UPLOADS_PATH || '/data/uploads';
-const USERS_FILE = path.join(process.env.USERS_PATH || '/data', 'users.json');
-
-// ensure directories
-if (!fs.existsSync(SESSIONS_PATH)) fs.mkdirSync(SESSIONS_PATH, { recursive: true });
-if (!fs.existsSync(UPLOADS_PATH)) fs.mkdirSync(UPLOADS_PATH, { recursive: true });
-if (!fs.existsSync(path.dirname(USERS_FILE))) fs.mkdirSync(path.dirname(USERS_FILE), { recursive: true });
-if (!fs.existsSync(USERS_FILE)) fs.writeFileSync(USERS_FILE, JSON.stringify({}));
-
 const app = express();
-const upload = multer({ dest: UPLOADS_PATH });
+const upload = multer({ dest: 'uploads/' });
 
-// --- Redis session store if REDIS_URL provided ---
-let sessionStore = null;
-
-if (process.env.REDIS_URL) {
-  const { default: RedisStore } = require("connect-redis");
-
-  const redisClient = new Redis(process.env.REDIS_URL);
-
-  sessionStore = new RedisStore({
-    client: redisClient,
-    prefix: "sess:",
-  });
-
-  console.log("Using Redis session store");
-}
-
+// Middleware
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
-app.use(
-  session({
-    store: sessionStore || undefined,
-    secret: process.env.SESSION_SECRET || 'defaultsecret',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { secure: process.env.NODE_ENV === 'production' ? true : false }
-  })
-);
+app.use(session({
+  secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
+  resave: false,
+  saveUninitialized: false,
+  cookie: { secure: false }
+}));
 
+// Users database file
+const USERS_FILE = 'users.json';
+
+// Initialize users file if it doesn't exist
+if (!fs.existsSync(USERS_FILE)) {
+  fs.writeFileSync(USERS_FILE, JSON.stringify({}));
+}
 
 // Load users from file
 function loadUsers() {
@@ -154,20 +130,18 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
   
   try {
     const client = new Client({
-      authStrategy: new LocalAuth({
-        clientId: user,
-        dataPath: path.join(SESSIONS_PATH, user)
-      }),
+      authStrategy: new LocalAuth({ clientId: user }),
       puppeteer: {
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
         headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage', // Uses /tmp instead of /dev/shm
-          '--disable-gpu',
-          '--single-process', // May be necessary in some constrained environments
-          '--no-zygote'
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process',
+          '--disable-gpu'
         ]
       }
     });
