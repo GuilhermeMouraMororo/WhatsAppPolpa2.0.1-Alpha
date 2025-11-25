@@ -4,12 +4,17 @@ if (process.env.NODE_ENV !== 'production') {
 }
 
 const express = require('express');
-const session = require('express-session');
+const session = require("express-session");
+const Redis = require("ioredis");
+const RedisStore = require("connect-redis").default;
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
+
+const redisClient = new Redis(process.env.REDIS_URL);
+
 
 if (!fs.existsSync('/mnt/data/uploads')) {
   fs.mkdirSync('/mnt/data/uploads', { recursive: true });
@@ -22,13 +27,18 @@ const upload = multer({ dest: '/mnt/data/uploads' });
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
-app.use(session({
-  secret: process.env.SESSION_SECRET || 'your-secret-key-change-this',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { secure: false }
-}));
-
+app.use(
+  session({
+    store: new RedisStore({ client: redisClient }),
+    secret: process.env.SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: false, // set to true if you use HTTPS
+      maxAge: 1000 * 60 * 60 * 24 * 30 // 30 days login
+    }
+  })
+);
 // Users database file
 const USERS_FILE = path.join('/mnt/data', 'users.json');
 
