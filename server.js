@@ -29,11 +29,18 @@ const upload = multer({ dest: UPLOADS_PATH });
 
 // --- Redis session store if REDIS_URL provided ---
 let sessionStore = null;
+
 if (process.env.REDIS_URL) {
-  const RedisStore = connectRedis(session);
+  const { default: RedisStore } = require("connect-redis");
+
   const redisClient = new Redis(process.env.REDIS_URL);
-  sessionStore = new RedisStore({ client: redisClient });
-  console.log('Using Redis session store');
+
+  sessionStore = new RedisStore({
+    client: redisClient,
+    prefix: "sess:",
+  });
+
+  console.log("Using Redis session store");
 }
 
 app.use(express.json());
