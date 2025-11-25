@@ -6,7 +6,7 @@ if (process.env.NODE_ENV !== 'production') {
 const express = require('express');
 const session = require("express-session");
 const Redis = require("ioredis");
-const RedisStore = require("connect-redis").default;
+const { RedisStore } = require("connect-redis");
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const multer = require('multer');
