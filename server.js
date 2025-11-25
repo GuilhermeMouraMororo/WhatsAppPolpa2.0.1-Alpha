@@ -5,23 +5,12 @@ if (process.env.NODE_ENV !== 'production') {
 
 const express = require('express');
 const session = require("express-session");
-const Redis = require("ioredis");
-const RedisStore = require("connect-redis").default;
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode');
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 
-const redisUrl = new URL(process.env.REDIS_URL);
-
-const redisClient = new Redis({
-  host: redisUrl.hostname,
-  port: redisUrl.port,
-  password: redisUrl.password,
-  username: redisUrl.username || undefined, // Railway usually doesn't need this
-  tls: redisUrl.protocol === "rediss:" ? {} : undefined
-});
 
 if (!fs.existsSync('/mnt/data/uploads')) {
   fs.mkdirSync('/mnt/data/uploads', { recursive: true });
@@ -36,16 +25,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.static('public'));
 app.use(
   session({
-    store: new RedisStore({ client: redisClient }),
-    secret: process.env.SESSION_SECRET,
+    secret: process.env.SESSION_SECRET || 'defaultsecret',
     resave: false,
     saveUninitialized: false,
-    cookie: {
-      secure: false, // set to true if you use HTTPS
-      maxAge: 1000 * 60 * 60 * 24 * 30 // 30 days login
-    }
   })
 );
+
 // Users database file
 const USERS_FILE = path.join('/mnt/data', 'users.json');
 
@@ -151,18 +136,18 @@ app.post('/api/init-whatsapp', isAuthenticated, async (req, res) => {
   
   try {
     const client = new Client({
-      authStrategy: new LocalAuth({ clientId: user, dataPath: '/mnt/data' }),
+      authStrategy: new LocalAuth({ 
+          clientId: user,
+          dataPath: './sessions'
+        })
+
       puppeteer: {
-        executablePath: '/usr/bin/chromium',
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH,
         headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--no-first-run',
-          '--no-zygote',
-          '--single-process',
           '--disable-gpu'
         ]
       }
